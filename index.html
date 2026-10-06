@@ -822,6 +822,7 @@ function banner(big,small,ms,cb){
   const d=document.createElement('div');d.id='fov';d.innerHTML=`<b>${big}</b>${small?`<span>${small}</span>`:''}`;
   document.body.appendChild(d);later(()=>{d.remove();cb&&cb()},ms);
 }
+let TR_FRESH=false;
 function roundIntro(){
   lock=true;tRun=false;tRem=TURN_MS;drawBar();
   const first=RND===1&&TN===0;
@@ -832,13 +833,13 @@ function roundIntro(){
   };
   if(!first)return show(beginTurn);
   if(ONLINE){if(window.WB){WB.hold=null;WB.play('tor')}return show(countIn)} // 通信の時は「ラウンド1」→「3・2・1・スタート！」
-  if(window.WB){WB.hold='tor';WB.stop()} // 曲は「タップしてスタート」を押したら流すよ
+  {const fr=TR_FRESH;TR_FRESH=false;if(fr&&window.WB){WB.hold='tor';WB.stop()}} // 曲はタイトルから始めた時だけ止めて、「タップしてスタート」で流すよ（最初からの時は曲を続けるよ）
   // 通信じゃない時は「タップしてスタート！」→すぐスタート
   const g=gid;const o=document.getElementById('fov');if(o)o.remove();
   const d=document.createElement('div');d.id='fov';d.className='tap';d.style.cursor='pointer';d.style.pointerEvents='auto';
   d.innerHTML='<b style="font-size:clamp(26px,8.5vw,40px)">タップしてスタート！</b>';
   say('じゅんびができたらタップしてね！');document.body.appendChild(d);
-  d.onclick=()=>{d.remove();if(g!==gid)return;if(window.WB){WB.hold=null;WB.play('tor')}tone(880,0,.4,'triangle',.14);banner('スタート！','',600);{const f=document.getElementById('fov');if(f)f.style.background='transparent'}beginTurn()}; // トリックバトルと同じく、タップしたらすぐスタート！（ラウンド1の表示は無し）
+  d.onclick=()=>{d.remove();if(g!==gid)return;if(window.WB&&(WB.hold==='tor'||WB.cur!=='tor')){WB.hold=null;WB.play('tor',WB.cur!=='tor')}tone(880,0,.4,'triangle',.14);banner('スタート！','',600);{const f=document.getElementById('fov');if(f)f.style.background='transparent'}beginTurn()}; // トリックバトルと同じく、タップしたらすぐスタート！（ラウンド1の表示は無し）
 }
 // 通信の時だけ「3・2・1・スタート！」でひと呼吸おくよ
 function countIn(){
@@ -1622,7 +1623,7 @@ $('sre').onclick=newGame;$('sgb').textContent='思い出';$('sgb').onclick=()=>o
 $('goHome2').onclick=goTitle;$('goHome1').onclick=goTitle;
 $('pickSpeed').onclick=startSpeed;
 $('pickShin').onclick=()=>{FAST=false;$('title').hidden=true;$('spd').hidden=true;$('shin').hidden=false;pushH();init();window.WB&&WB.play('pm')};
-$('pickFast').onclick=()=>{FAST=true;$('title').hidden=true;$('spd').hidden=true;$('shin').hidden=false;pushH();init()};
+$('pickFast').onclick=()=>{FAST=true;$('title').hidden=true;$('spd').hidden=true;$('shin').hidden=false;pushH();TR_FRESH=true;init()};
 $('tart').innerHTML=FACE.map(a=>`<img alt="" src="${a}">`).join('');
 })();
 </script>
