@@ -48,6 +48,8 @@ body{margin:0;background:var(--bg);color:#fff;font-family:"Zen Maru Gothic","Hir
 @keyframes mistp{from{opacity:.55}to{opacity:1}}
 
 .c.hid{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .5s,visibility 0s .5s}
+/* スミカのゴースト：消えたカードは、うっすら半透明で見えるよ（触れないのはそのまま） */
+.c.hid{opacity:.28;visibility:visible;filter:grayscale(.5) drop-shadow(0 0 6px rgba(185,138,255,.7));transition:opacity .5s,filter .5s}
 .fa,.ba{position:absolute;inset:0;border-radius:8px;backface-visibility:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:800}
 .ba{background:url("data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%20100%20100%27%3E%3Cpath%20d=%27M47%2034q0-12%2010-16l3%205q-7%203-7%2011z%27%20fill=%27%232a0f3d%27/%3E%3Cpath%20d=%27M57%2022q8-6%2014%200q-7-1-12%204z%27%20fill=%27%232a0f3d%27/%3E%3Cellipse%20cx=%2732%27%20cy=%2762%27%20rx=%2721%27%20ry=%2726%27%20fill=%27%232a0f3d%27/%3E%3Cellipse%20cx=%2768%27%20cy=%2762%27%20rx=%2721%27%20ry=%2726%27%20fill=%27%232a0f3d%27/%3E%3Cellipse%20cx=%2750%27%20cy=%2762%27%20rx=%2724%27%20ry=%2728%27%20fill=%27%232a0f3d%27/%3E%3Cpath%20d=%27M33%2056l7-11%207%2011zM53%2056l7-11%207%2011z%27%20fill=%27%23ff9a1f%27/%3E%3Cpath%20d=%27M46%2064l4-5%204%205z%27%20fill=%27%23ff9a1f%27/%3E%3Cpath%20d=%27M30%2070q20%2017%2040%200l-6%201-3%204-5-4-4%205-4-5-5%204-3-4z%27%20fill=%27%23ff9a1f%27/%3E%3C/svg%3E") 50% 54%/74% auto no-repeat,radial-gradient(circle at 50% 45%,rgba(255,236,170,.55),transparent 62%),repeating-linear-gradient(45deg,rgba(255,255,255,.1) 0 4px,transparent 4px 9px),linear-gradient(160deg,#ffb04a,#f26a00);border:3px solid #ffd23f}
 .fa{font-family:"Fredoka","Zen Maru Gothic","Hiragino Maru Gothic ProN",sans-serif;font-weight:700;background:var(--card);color:var(--cpu);transform:rotateY(180deg);font-size:clamp(16px,5vw,24px)}
@@ -740,7 +742,7 @@ function sumikaFx(){
   if(n<=0)return;
   shufArr(un).slice(0,n).forEach(i=>{const c=cards[i];c.gn=true;c.hid=[2,2];c.v=[0,0];mem.delete(i)});
   syncVis();sfx.ghost();
-  say('スミカの「ゴースト」！'+n+'枚のカードが消えたよ。2ターンの間触れないね');
+  say('スミカの「ゴースト」！'+n+'枚のカードがお化けみたいに透けちゃったよ。2ターンの間触れないね');
 }
 function shufArr(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(RNG()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function riameraFx(done){
@@ -970,7 +972,7 @@ const GFX={
    {t:'チェンジ',d:'<b>左はしの列</b>と<b>右はしの列</b>が、まるごと入れ替わるよ！'},
    {t:'フレイム',d:'ランダムで<b>4ペア</b>のカードが燃えて、新しい4ペアに変わるよ！',s:'3枚そろえ・4魔女では、4組が燃えるよ'},
    {t:'ルック',d:'好きなカードを<b>3枚</b>選んで、のぞき見できるよ！見られるのは<b>自分だけ</b>だね。'},
-   {t:'ゴースト',d:'<b>4枚</b>のカードが消えて、<b>2ターン</b>のあいだ触れなくなるよ！'}]},
+   {t:'ゴースト',d:'<b>4枚</b>のカードがお化けみたいに透けて、<b>2ターン</b>のあいだ触れなくなるよ！'}]},
  tr:{n:'ターンラッシュ',note:'同じウィッチどうしでそろうと、そのウィッチの効果が出るよ！効果のあいだは時間が止まるよ。<br>ちがうウィッチどうしでそろった時は、お互いに<b>3枚</b>ずつ、<b>2ターン</b>のあいだカードが見えるよ。',
   fx:[{t:'攻撃と防御',d:'自分は<b>2枚</b>のカードがずっと見えるよ！<br>相手は<b>2枚</b>のカードが<b>2ターン</b>のあいだ闇に隠れちゃうよ。'},
    {t:'交換',d:'次の番が入れ替わって、<b>続けて自分の番</b>になるよ！<br>さらに相手から<b>1秒</b>もらって、次は自分<b>6秒</b>・相手<b>4秒</b>だね。'},
