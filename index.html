@@ -1368,11 +1368,20 @@ window.addEventListener('load',()=>{try{const l=document.createElement('link');l
 const $=id=>document.getElementById(id);
 const SUITS=['♥','♠','♦','♣'],LAB=n=>({1:'A',11:'J',12:'Q',13:'K'}[n]||n),DELAY=[2300,1500,900,480];
 let G=null,gid2=0,SV=false,SL=0;
+// ===== トリックバトル 通信対戦 =====
+// しくみ：部屋を作った人（部屋主）のスマホがゲームを進めて、盤面をまるごと相手に送るよ。
+// 相手は「この札をここに出したい」「手札チェンジしたい」だけを部屋主に送るよ。
+const TB={on:false,me:0,room:null,peer:null,myPeer:null,code:'',ev:[],pt:0,ver:0,inV:-1,iid:0,pend:[],done:-1,gone:false,over:false,fr:[0,0],lastTx:0};
+const V=p=>TB.me===0?p:1-p;
+function rec(e){if(TB.on&&TB.me===0){TB.ev.push(e);tbPushSoon()}}
+const SFX=new Proxy({},{get:(_,n)=>(...a)=>{try{sfx[n](...a)}catch(e){}if(n!=='miss')rec({k:'sfx',n,a})}});
+function TONE(...a){tone(...a);rec({k:'tone',a})}
+const tbTx=t=>String(t).replace(/\u0001(\d)\u0002/g,(m,p)=>+p===TB.me?'あなた':'相手');
 const shuf=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
 const adj=(a,b)=>{const d=Math.abs(a-b);return d===1||d===12};
 const fits=(c,t)=>!!(c&&t&&(c.w||t.w||adj(c.r,t.r)));
-const ACTIVE=[0,1,2,3,4],WN=['ブランカ','トリータ','リアメラ','ミデリィ','スミカ'],NM=p=>SV?(p?'2P':'1P'):(p?'CPU':'あなた');
-const say2=t=>{$('sst').textContent=t};
+const ACTIVE=[0,1,2,3,4],WN=['ブランカ','トリータ','リアメラ','ミデリィ','スミカ'],NM=p=>TB.on?'\u0001'+p+'\u0002':SV?(p?'2P':'1P'):(p?'CPU':'あなた');
+const say2=t=>{rec({k:'say',t});$('sst').textContent=tbTx(t)};
 const left=p=>G.f[p].filter(Boolean).length+G.st[p].length;
 function top(k){const a=G.pile[k];return a[a.length-1]}
 const blk=(p,k)=>!!(G.cov&&G.cov.q===p&&G.cov.k===k);
@@ -1390,6 +1399,8 @@ setInterval(()=>{
 window.__spd=()=>G?{left:Math.min(left(0),left(1)),paused:PAUSED,over:!!G.over}:null;
 let SPD_FRESH=false;
 function newGame(){
+  if(TB.on&&TB.me!==0)return; // 通信の相手側は、部屋主から盤面が届くのを待つよ
+  if(TB.on){SV=false;TB.over=false;rec({k:'new'})}
   const fresh=SPD_FRESH;SPD_FRESH=false;
   gid2++;if(fresh&&window.WB){WB.hold='spd';WB.stop()} // 曲はタイトルから始めた時だけ止めて、「タップしてスタート」で流すよ（最初からの時は曲を続けるよ）
   const deck=[];for(const s of SUITS)for(let r=1;r<=13;r++)deck.push({r,s});shuf(deck);
@@ -1407,9 +1418,10 @@ function newGame(){
   render();say2('準備してね…　山札を長押しで手札チェンジ（2回まで）');
   let n=3;const ov=document.createElement('div');ov.id='sov';document.body.appendChild(ov);
   const step=()=>{
-    if(n>0){ov.textContent=n;tone(520+(3-n)*90,0,.18,'sine',.12);n--;later2(step,700)}
-    else{ov.innerHTML='<span style="transform:translateY(-50%)">スタート！</span>';sovPos(ov);tone(880,0,.4,'triangle',.14);later2(()=>{ov.remove()},600);G.go=true;G.t0=CLK;say2(SV?'どっちも早くタップしてね！':'出せるカードを早くタップしてね！');flipCenter();cpuTick();watch()}
+    if(n>0){rec({k:'cd',n});ov.innerHTML='<span style="transform:translateY(-50%)">'+n+'</span>';sovPos(ov);TONE(520+(3-n)*90,0,.18,'sine',.12);n--;later2(step,700)}
+    else{rec({k:'go'});ov.innerHTML='<span style="transform:translateY(-50%)">スタート！</span>';sovPos(ov);TONE(880,0,.4,'triangle',.14);later2(()=>{ov.remove()},600);G.go=true;G.t0=CLK;say2(SV?'どっちも早くタップしてね！':'出せるカードを早くタップしてね！');flipCenter();cpuTick();watch()}
   };
+  if(TB.on){if(window.WB){WB.hold=null;if(WB.cur!=='spd')WB.play('spd')}later2(step,500);return} // 通信の時は「3・2・1・スタート！」
   // タップしてスタート（タップしたら3・2・1が始まるよ）
   const g=gid2;ov.classList.add('tap');ov.style.pointerEvents='auto';ov.style.cursor='pointer';ov.style.background='rgba(5,20,15,.55)';
   ov.innerHTML='<span style="font-size:clamp(26px,8.5vw,40px);transform:translateY(-50%)">タップしてスタート！</span>';sovPos(ov);
@@ -1429,7 +1441,8 @@ function render(){
   const rv=p=>`<div class="rsv ${SV&&p===1?'rot':''}"><div class="pc bk"></div><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:#fff;text-shadow:0 1px 3px #000">${G.rs[p].length}</span></div>`;
   const pl=k=>`<button class="pile ${anySel?'tg':''}" data-k="${k}">${G.pile[k].length?((G.cov&&G.cov.k===k&&(SV||G.cov.q===0))?'<div class="pc vanish"></div>':cardHTML(top(k),(G.fresh[k]?'drop':'')+(G.cov&&G.cov.k===k?' half':''))):''}</button>`;
   $('smid').innerHTML=pl(0)+pl(1);
-  G.fresh=[0,0];
+  TB.fr=[TB.fr[0]|G.fresh[0],TB.fr[1]|G.fresh[1]];
+  G.fresh=[0,0];tbPushSoon();
 }
 function flipCenter(){
   if(G.over)return;
@@ -1440,7 +1453,7 @@ function flipCenter(){
     say2('山を混ぜ直したよ');
   }
   for(let k=0;k<2;k++){const src=k===0?1:0;const c=G.rs[src].pop()||G.rs[1-src].pop();if(c){G.pile[k].push(c);G.fresh[k]=1}}
-  sfx.flip();render();
+  SFX.flip();render();
   for(let p=0;p<2;p++)if(G.sel[p]!==null&&!moves(p).some(m=>m[0]===G.sel[p]))G.sel[p]=null;
   render();
   later2(checkStuck,500);
@@ -1455,10 +1468,10 @@ function watch(){later2(()=>{if(!G.over){checkStuck();watch()}},500)}
 function play(p,i,k){
   if(!G.go||G.over)return false;
   const c=G.f[p][i],t=top(k);
-  if(!c||G.hid[p][i]||blk(p,k)||!fits(c,t)){sfx.miss();return false}
+  if(!c||G.hid[p][i]||blk(p,k)||!fits(c,t)){SFX.miss();return false}
   G.pile[k].push(c);G.fresh[k]=1;G.f[p][i]=G.st[p].length?G.st[p].pop():null;G.hid[p][i]=0;G.sel[p]=null;
   const q=1-p;if(G.sel[q]!==null&&!moves(q).some(m=>m[0]===G.sel[q]))G.sel[q]=null;
-  sfx.flip();
+  SFX.flip();
   if(c.w){witchFx(p,c.a);refill(0);refill(1)}
   render();
   if(left(p)===0)return finish(p),true;
@@ -1468,7 +1481,7 @@ function play(p,i,k){
 function refill(pp){G.f[pp].forEach((c,i)=>{if(!c&&G.st[pp].length){G.f[pp][i]=G.st[pp].pop();G.hid[pp][i]=0}})}
 const playable=c=>!!c&&[0,1].some(k=>fits(c,top(k)));
 function hideSlot(q,i,v,ms){G.hid[q][i]=v;G.hidT=G.hidT||[[],[]];const t=gnow()+ms;G.hidT[q][i]=t;later2(()=>{if(G.hidT[q][i]<=gnow()+60&&G.hid[q][i]===v){G.hid[q][i]=0;render()}},ms+80)}
-function flash(kind){const d=document.createElement('div');d.className='fl '+kind;document.body.appendChild(d);setTimeout(()=>d.remove(),1100)}
+function flash(kind){rec({k:'fl',kind});const d=document.createElement('div');d.className='fl '+kind;document.body.appendChild(d);setTimeout(()=>d.remove(),1100)}
 const idxs=(pp,f)=>G.f[pp].map((c,i)=>c&&f(c,i)?i:-1).filter(i=>i>=0);
 const slotEl=(p,i)=>document.querySelector(`#sa${p} .sl[data-i="${i}"]`),stkEl=p=>document.querySelector(`#sa${p} .stk`);
 const rotOf=p=>SV&&p===1?180:0;
@@ -1497,24 +1510,25 @@ function witchFx(p,a){
     const cand=idxs(q,(c,i)=>!G.hid[q][i]),pl=cand.filter(i=>playable(G.f[q][i])),tg=shuf(pl).concat(shuf(cand.filter(i=>!pl.includes(i)))).slice(0,2);
     flash('li');
     later2(()=>{flash('dk');if(tg.length){G.sel[q]=null;tg.forEach(i=>hideSlot(q,i,2,7000));render()}},600);
-    say2('ブランカの光と闇！'+(bad.length?NM(p)+'の不利な'+bad.length+'枚は山札の底へ、':'')+NM(q)+'の手札'+Math.min(2,G.f[q].filter(Boolean).length)+'枚が7秒の闇に包まれたよ');sfx.magic();
+    say2('ブランカの光と闇！'+(bad.length?NM(p)+'の不利な'+bad.length+'枚は山札の底へ、':'')+NM(q)+'の手札'+Math.min(2,G.f[q].filter(Boolean).length)+'枚が7秒の闇に包まれたよ');SFX.magic();
   }else if(a===1){ // トリータ トリート
     const mine=idxs(p,c=>!c.w&&!playable(c));
     const rest=shuf(idxs(p,c=>!c.w&&playable(c)));
     const my=shuf(mine).concat(rest).slice(0,2);
     const th=idxs(q,c=>!c.w&&playable(c)),other=idxs(q,c=>!c.w&&!playable(c)); // ウィッチは交換しない
     const op=shuf(th).concat(shuf(other)).slice(0,my.length);
-    const n=Math.min(my.length,op.length);
+    const n=Math.min(my.length,op.length),TP=[];
     for(let j=0;j<n;j++){
       const mi=my[j],oi=op[j],fa=slotEl(p,mi),fb=slotEl(q,oi),ra=fa&&fa.getBoundingClientRect(),rb=fb&&fb.getBoundingClientRect();
       const x=G.f[p][mi],y=G.f[q][oi];
       setTimeout(()=>{
-        fly(x,ra,()=>{const e=slotEl(q,oi);return e&&e.getBoundingClientRect()},{cls:'tr',arc:-46,delay:j*140,r0:rotOf(p),r1:rotOf(q),land:()=>{pulse(slotEl(q,oi));tone(660+j*90,0,.12,'triangle',.08)}});
+        fly(x,ra,()=>{const e=slotEl(q,oi);return e&&e.getBoundingClientRect()},{cls:'tr',arc:-46,delay:j*140,r0:rotOf(p),r1:rotOf(q),land:()=>{pulse(slotEl(q,oi));TONE(660+j*90,0,.12,'triangle',.08)}});
         fly(y,rb,()=>{const e=slotEl(p,mi);return e&&e.getBoundingClientRect()},{cls:'tr',arc:46,delay:j*140,r0:rotOf(q),r1:rotOf(p),land:()=>pulse(slotEl(p,mi))});
       },0);
-      G.f[p][mi]=y;G.f[q][oi]=x;G.hid[p][mi]=0;G.hid[q][oi]=0}
+      TP.push([mi,oi,x,y]);G.f[p][mi]=y;G.f[q][oi]=x;G.hid[p][mi]=0;G.hid[q][oi]=0}
+    rec({k:'trade',p,q,pr:TP});
     G.sel[p]=null;G.sel[q]=null;
-    say2('トリータのトリート！'+NM(p)+'の出せない'+n+'枚と、'+NM(q)+'の出せそうな'+n+'枚を交換したよ！');sfx.magic();
+    say2('トリータのトリート！'+NM(p)+'の出せない'+n+'枚と、'+NM(q)+'の出せそうな'+n+'枚を交換したよ！');SFX.magic();
   }else if(a===2){ // リアメラ 燃えろ＋手札1枠
     const ix=shuf(G.f[q].map((c,i)=>c?i:-1).filter(i=>i>=0)).slice(0,3);
     G.bn=G.bn||[[],[]];
@@ -1523,17 +1537,18 @@ function witchFx(p,a){
     ix.forEach(i=>{G.f[q][i]=G.st[q].length?G.st[q].pop():null});
     let ex='';
     if(G.f[p].length<6){G.f[p].push(G.st[p].length?G.st[p].pop():null);G.hid[p].push(0);ex='。'+NM(p)+'の手札が1枠増えたよ'}
-    say2('リアメラの「燃えろ」！'+NM(q)+'の手札'+ix.length+'枚が燃えて山札の底へ行ったよ'+ex);sfx.magic();
+    say2('リアメラの「燃えろ」！'+NM(q)+'の手札'+ix.length+'枚が燃えて山札の底へ行ったよ'+ex);SFX.magic();
     later2(()=>{G.bn=null;render()},900);
   }else if(a===3){ // ミデリィ 不幸な手紙
     const bad=shuf(idxs(p,c=>!c.w&&!playable(c)));
     const rest=shuf(idxs(p,c=>!c.w&&playable(c)));
     const ix=bad.concat(rest).slice(0,2+Math.floor(Math.random()*2));
     const sent=ix.map(i=>{const e=slotEl(p,i);return [G.f[p][i],e&&e.getBoundingClientRect()]});
+    rec({k:'mail',p,q,ix,cs:sent.map(s=>s[0])});
     ix.forEach(i=>{G.st[q].push(G.f[p][i]);G.f[p][i]=G.st[p].length?G.st[p].pop():null;G.hid[p][i]=0});
-    sent.forEach(([c,r],j)=>fly(c,r,()=>{const e=stkEl(q);return e&&e.getBoundingClientRect()},{cls:'md',arc:(j-1)*40,spin:20,delay:j*170,r0:rotOf(p),r1:rotOf(q),land:()=>{pulse(stkEl(q),j===sent.length-1?'+'+sent.length:'');tone(520+j*110,0,.12,'sine',.09)}}));
+    sent.forEach(([c,r],j)=>fly(c,r,()=>{const e=stkEl(q);return e&&e.getBoundingClientRect()},{cls:'md',arc:(j-1)*40,spin:20,delay:j*170,r0:rotOf(p),r1:rotOf(q),land:()=>{pulse(stkEl(q),j===sent.length-1?'+'+sent.length:'');TONE(520+j*110,0,.12,'sine',.09)}}));
     G.sel[p]=null;
-    say2('ミデリィの「不幸な手紙」！'+NM(p)+'の出せない札'+ix.length+'枚が'+NM(q)+'の山札に届いたよ！');sfx.magic();
+    say2('ミデリィの「不幸な手紙」！'+NM(p)+'の出せない札'+ix.length+'枚が'+NM(q)+'の山札に届いたよ！');SFX.magic();
   }else if(a===4){ // スミカ 手札1枠＋中央を8秒
     const cand=idxs(q,(c,i)=>!G.hid[q][i]),pl=cand.filter(i=>playable(G.f[q][i])),tg=shuf(pl.length?pl:cand)[0];
     if(tg!==undefined){G.sel[q]=null;hideSlot(q,tg,1,8000)}
@@ -1542,7 +1557,7 @@ function witchFx(p,a){
     G.cov={k:ck,q};G.covT=gnow()+8000;
     if(G.sel[q]!==null&&!moves(q).some(m=>m[0]===G.sel[q]))G.sel[q]=null;
     later2(()=>{if(G.covT<=gnow()+60){G.cov=null;render()}},8080);
-    say2('スミカの「神隠し」！'+NM(q)+'の手札1枠と中央の'+(ck?'右':'左')+'の札が8秒隠れたよ（'+NM(q)+'はそこに出せないよ）');sfx.magic();
+    say2('スミカの「神隠し」！'+NM(q)+'の手札1枠と中央の'+(ck?'右':'左')+'の札が8秒隠れたよ（'+NM(q)+'はそこに出せないよ）');SFX.magic();
   }
 }
 const WFX=[
@@ -1554,9 +1569,11 @@ const WFX=[
 window.TB_WFX={n:'トリックバトル',note:'ウィッチは、どの札の上にも出せるし、どの札でも上に重ねられるよ。1回のゲームで、お互い2枚ずつ山に入ってるね。ウィッチが相手に渡ることはないよ。',fx:WFX};
 window.TB_PAUSE=on=>{PAUSED=on;const o=$('sov');if(o&&!o.classList.contains('end'))o.style.visibility=on?'hidden':''};
 function finish(w,byCount){
-  G.over=true;G.go=false;gid2+=0;window.REC&&REC.tbEnd(w,SV,SL,CLK-(G.t0==null?CLK:G.t0));if(!SV&&w===0)unlock(['wt']);
+  G.over=true;G.go=false;gid2+=0;
+  if(TB.on){TB.over=true;rec({k:'end',w});tbEndUI(w);return}
+  window.REC&&REC.tbEnd(w,SV,SL,CLK-(G.t0==null?CLK:G.t0));if(!SV&&w===0)unlock(['wt']);
   const txt=SV?(w===0?'1Pの勝ち！':'2Pの勝ち！'):(w===0?'あなたの勝ち！':'CPUの勝ち…');
-  (SV||w===0?sfx.win:sfx.lose)();
+  (SV||w===0?SFX.win:SFX.lose)();
   const o=document.createElement('div');o.id='sov';o.className='end';
   o.innerHTML=(SV?`<div class="rt">${txt}</div>`:'')+`<div>${txt}</div><div class="row"><button class="big" style="width:auto;font-size:18px;padding:10px 18px" id="sagain">もう一回</button><button class="big" style="width:auto;font-size:18px;padding:10px 18px" id="shome">タイトルへ</button></div>`;
   document.body.appendChild(o);
@@ -1572,16 +1589,18 @@ function reshuffle(p){
   G.st[p].push(...G.f[p].filter(Boolean));shuf(G.st[p]);
   G.f[p]=G.f[p].map(()=>G.st[p].length?G.st[p].pop():null);
   const q=1-p;if(G.sel[q]!==null&&!moves(q).some(m=>m[0]===G.sel[q]))G.sel[q]=null;
-  [0,1,2].forEach(j=>setTimeout(()=>sfx.flip(),j*70));
+  [0,1,2].forEach(j=>setTimeout(()=>SFX.flip(),j*70));
   say2(NM(p)+'の手札チェンジ！手札を山札に戻して、混ぜて引き直したよ');
   render();
+  rec({k:'shf',p});
   document.querySelectorAll('#sa'+p+' .sl').forEach((b,j)=>{b.classList.add('shf');b.style.animationDelay=(j*45)+'ms';setTimeout(()=>{b.classList.remove('shf')},700)});
   checkStuck();
 }
-function holdStart(p){if(!canChg(p))return;G.hold[p]=Date.now();render();const t=G.hold[p];later2(()=>{if(G.hold[p]===t)reshuffle(p)},HOLD)}
+function holdStart(p){if(TB.on&&TB.me===1){if(!G||!G.go||G.over||G.used[0]>=2||!G.st[0].length||G.hold[0])return;G.hold[0]=Date.now();render();const t=G.hold[0];setTimeout(()=>{if(G&&G.hold[0]===t){G.hold[0]=0;render();tbAct({t:'chg'})}},HOLD);return}
+  if(!canChg(p))return;G.hold[p]=Date.now();render();const t=G.hold[p];later2(()=>{if(G.hold[p]===t)reshuffle(p)},HOLD)}
 function holdEnd(p){if(G&&G.hold[p]){G.hold[p]=0;render()}}
 function cpuTick(){
-  if(SV)return;
+  if(SV||TB.on)return;
   later2(()=>{
     if(G.go&&!G.over&&true){const m=moves(1);if(m.length){G.cpuNo=0;const x=m[Math.floor(Math.random()*m.length)];play(1,x[0],x[1])}else if(canChg(1)&&G.st[1].length>=3){G.cpuNo=G.cpuNo||gnow();if(gnow()-G.cpuNo>4000){G.cpuNo=0;reshuffle(1)}}}
     cpuTick();
@@ -1593,8 +1612,8 @@ function slotTap(p,i){
   const c=G.f[p][i];if(!c)return;
   if(G.hid[p][i])return;
   const ks=[0,1].filter(k=>!blk(p,k)&&fits(c,top(k)));
-  if(!ks.length){sfx.miss();return}
-  if(ks.length===1)return void play(p,i,ks[0]);
+  if(!ks.length){SFX.miss();return}
+  if(ks.length===1){if(TB.on&&TB.me===1){G.sel[0]=null;render();return tbAct({t:'play',i,k:ks[0]})}return void play(p,i,ks[0])}
   G.sel[p]=G.sel[p]===i?null:i;sfx.flip();render();
 }
 function pileTap(k,e){
@@ -1602,10 +1621,11 @@ function pileTap(k,e){
   let p=0;
   if(SV){const r=e.currentTarget.getBoundingClientRect();p=e.clientY>r.top+r.height/2?0:1}
   if(G.sel[p]===null)return;
-  if(blk(p,k)){sfx.miss();return}
+  if(blk(p,k)){SFX.miss();return}
+  if(TB.on&&TB.me===1){const i=G.sel[0];if(!fits(G.f[0][i],top(k))){SFX.miss();return}G.sel[0]=null;render();return tbAct({t:'play',i,k})}
   play(p,G.sel[p],k);
 }
-function goTitle(){window.__torLeave&&window.__torLeave();if(window.WB)WB.hold=null;{const pa=document.getElementById('pagain');if(pa)pa.remove()}window.WB&&WB.stop();gid2++;G=null;PAUSED=false;TQ=[];{const g=$('gal');if(g)g.remove()}const o=$('sov');if(o)o.remove();{const f=$('fov');if(f)f.remove()}try{tRun=false}catch(e){}$('spd').hidden=true;$('shin').hidden=true;{const t=$('tot');if(t&&!t.hidden){t.hidden=true;window.totStop&&totStop()}}$('title').hidden=false;try{gid++}catch(e){}}
+function goTitle(){tbLeave(false);window.__torLeave&&window.__torLeave();if(window.WB)WB.hold=null;{const pa=document.getElementById('pagain');if(pa)pa.remove()}window.WB&&WB.stop();gid2++;G=null;PAUSED=false;TQ=[];{const g=$('gal');if(g)g.remove()}const o=$('sov');if(o)o.remove();{const f=$('fov');if(f)f.remove()}try{tRun=false}catch(e){}$('spd').hidden=true;$('shin').hidden=true;{const t=$('tot');if(t&&!t.hidden){t.hidden=true;window.totStop&&totStop()}}$('title').hidden=false;try{gid++}catch(e){}}
 function pushH(){try{history.pushState({g:1},'')}catch(e){}}
 function startSpeed(){$('title').hidden=true;$('shin').hidden=true;$('spd').hidden=false;pushH();SPD_FRESH=true;newGame()}
 window.addEventListener('popstate',()=>{if(!$('title').hidden)return;goTitle()});
@@ -1624,6 +1644,165 @@ $('goHome2').onclick=goTitle;$('goHome1').onclick=goTitle;
 $('pickSpeed').onclick=startSpeed;
 $('pickShin').onclick=()=>{FAST=false;$('title').hidden=true;$('spd').hidden=true;$('shin').hidden=false;pushH();init();window.WB&&WB.play('pm')};
 $('pickFast').onclick=()=>{FAST=true;$('title').hidden=true;$('spd').hidden=true;$('shin').hidden=false;pushH();TR_FRESH=true;init()};
+// ----- トリックバトル 通信対戦：つなぐ・送る・受け取る -----
+function tbSend(m){if(!TB.room)return;try{TB.room.emit('tb',Object.assign({},m,{to:TB.peer||undefined})).catch(()=>{})}catch(e){}}
+function tbPushSoon(){if(!(TB.on&&TB.me===0&&TB.peer&&G))return;if(TB.pt)return;TB.pt=setTimeout(tbPush,0)}
+function tbSnap(){const fr=TB.fr;TB.fr=[0,0];return{f:G.f,hid:G.hid,stn:[G.st[0].length,G.st[1].length],rsn:[G.rs[0].length,G.rs[1].length],pn:[G.pile[0].length,G.pile[1].length],pt:[top(0)||null,top(1)||null],used:G.used,cov:G.cov||null,bn:G.bn||null,fresh:fr,go:!!G.go,over:!!G.over}}
+function tbPush(){TB.pt=0;if(!(TB.on&&TB.me===0&&TB.peer&&G))return;const ev=TB.ev;TB.ev=[];tbSend({t:'st',v:++TB.ver,s:tbSnap(),ev,ack:TB.done})}
+// 相手（参加した人）の操作は、番号つきで「届いたよ」が来るまで送り直すよ
+function tbAct(a){TB.iid++;TB.pend.push({id:TB.iid,a});TB.lastTx=Date.now();tbSend({t:'act',id:TB.iid,a})}
+setInterval(()=>{
+  if(!TB.room)return;
+  if(TB.me===1&&!TB.on){tbSend({t:'hello'});return}
+  if(TB.me===1&&TB.pend.length&&Date.now()-TB.lastTx>500){TB.lastTx=Date.now();TB.pend.forEach(x=>tbSend({t:'act',id:x.id,a:x.a}))}
+  if(TB.me===0&&TB.on&&G){if(TB.pt){clearTimeout(TB.pt);TB.pt=0}tbPush()} // とぎれても追いつけるよう、1秒ごとに盤面を送り直すよ
+  tbBar();
+},1000);
+function tbRecv(msg){
+  if(!msg||msg.sameTab)return;
+  const d=msg.data;if(!d||typeof d!=='object'||typeof d.t!=='string')return;
+  if(TB.peer&&msg.peer!==TB.peer)return; // 3人目の人は無視するよ
+  if(d.to&&TB.myPeer&&d.to!==TB.myPeer)return;
+  if(d.t==='bye'){if(TB.peer&&msg.peer===TB.peer)tbDissolve();return}
+  if(TB.me===0){
+    if(!TB.peer){if(d.t==='hello'){TB.peer=msg.peer;tbStart()}return}
+    if(d.t!=='act'||typeof d.id!=='number'||!d.a)return;
+    if(d.id<=TB.done){tbPushSoon();return}
+    TB.done=d.id;const a=d.a;
+    if(a.t==='play'&&G&&G.go&&!G.over&&Number.isInteger(a.i)&&(a.k===0||a.k===1)){
+      const c=G.f[1][a.i];
+      if(!c||G.hid[1][a.i]||blk(1,a.k)||!fits(c,top(a.k)))tbSend({t:'nope'});else play(1,a.i,a.k);
+    }else if(a.t==='chg'){if(canChg(1))reshuffle(1)}
+    else if(a.t==='again'){if(TB.over)tbStart()}
+    if(TB.pt){clearTimeout(TB.pt);TB.pt=0}tbPush();
+    return;
+  }
+  // ここから参加した人
+  if(!TB.peer){if(d.t!=='st')return;TB.peer=msg.peer}
+  if(d.t==='st')tbApply(d);
+  else if(d.t==='nope')sfx.miss();
+}
+function tbView(s){
+  const M=a=>TB.me===1?[a[1],a[0]]:a;
+  const hold0=G&&G.hold?G.hold[0]:0,sel0=G&&G.sel?G.sel[0]:null;
+  G={f:M(s.f),hid:M(s.hid),st:M(s.stn).map(n=>Array(n).fill(0)),rs:M(s.rsn).map(n=>Array(n).fill(0)),
+     pile:s.pn.map((n,k)=>n?Array(n-1).fill(0).concat([s.pt[k]]):[]),used:M(s.used),
+     cov:s.cov?{k:s.cov.k,q:V(s.cov.q)}:null,bn:s.bn?M(s.bn):null,fresh:s.fresh||[0,0],go:s.go,over:s.over,
+     sel:[sel0,null],hold:[s.go&&!s.over?hold0:0,0],stuck:false,hidT:[[],[]]};
+  if(G.sel[0]!==null&&(!G.go||G.over||!moves(0).some(m=>m[0]===G.sel[0])))G.sel[0]=null;
+}
+function tbOv(html,end){let o=$('sov');if(!o){o=document.createElement('div');o.id='sov';document.body.appendChild(o)}o.className=end?'end':'';o.style.pointerEvents=end?'':'none';o.style.background='';o.innerHTML=html;if(!end)sovPos(o);return o}
+let tbGoT=0;
+function tbApply(d){
+  if(typeof d.v!=='number'||d.v<=TB.inV||!d.s)return;TB.inV=d.v;
+  TB.pend=TB.pend.filter(x=>x.id>d.ack);
+  const ev=Array.isArray(d.ev)?d.ev:[];
+  if(!TB.on){TB.on=true;TB.over=false;olClose();gid2++;TQ=[];const o=$('sov');if(o)o.remove();tbUI();if(window.WB){WB.hold=null;if(WB.cur!=='spd')WB.play('spd')}}
+  // 飛んでいく札は、盤面が変わる前の場所から飛ばすよ
+  const rr=(p,i)=>{const e=slotEl(p,i);return e&&e.getBoundingClientRect()};
+  const pre=ev.map(e=>e.k==='trade'?e.pr.map(([mi,oi])=>[rr(V(e.p),mi),rr(V(e.q),oi)]):e.k==='mail'?e.ix.map(i=>rr(V(e.p),i)):null);
+  if(ev.some(e=>e.k==='new')){G=null;const o=$('sov');if(o)o.remove();clearTimeout(tbGoT)}
+  tbView(d.s);render();
+  ev.forEach((e,n)=>{try{
+    if(e.k==='sfx'){if(sfx[e.n])sfx[e.n](...(e.a||[]))}
+    else if(e.k==='tone')tone(...e.a);
+    else if(e.k==='say')$('sst').textContent=tbTx(e.t);
+    else if(e.k==='fl'){const x=document.createElement('div');x.className='fl '+e.kind;document.body.appendChild(x);setTimeout(()=>x.remove(),1100)}
+    else if(e.k==='trade'){const vp=V(e.p),vq=V(e.q);e.pr.forEach(([mi,oi,x,y],j)=>{const[ra,rb]=pre[n][j];
+      fly(x,ra,()=>{const el=slotEl(vq,oi);return el&&el.getBoundingClientRect()},{cls:'tr',arc:-46,delay:j*140,land:()=>pulse(slotEl(vq,oi))});
+      fly(y,rb,()=>{const el=slotEl(vp,mi);return el&&el.getBoundingClientRect()},{cls:'tr',arc:46,delay:j*140,land:()=>pulse(slotEl(vp,mi))})})}
+    else if(e.k==='mail'){const vq=V(e.q),L=e.cs.length;e.cs.forEach((c,j)=>fly(c,pre[n][j],()=>{const el=stkEl(vq);return el&&el.getBoundingClientRect()},{cls:'md',arc:(j-1)*40,spin:20,delay:j*170,land:()=>pulse(stkEl(vq),j===L-1?'+'+L:'')}))}
+    else if(e.k==='shf'){document.querySelectorAll('#sa'+V(e.p)+' .sl').forEach((b,j)=>{b.classList.add('shf');b.style.animationDelay=(j*45)+'ms';setTimeout(()=>b.classList.remove('shf'),700)})}
+    else if(e.k==='cd'){tbOv('<span style="transform:translateY(-50%)">'+(+e.n)+'</span>')}
+    else if(e.k==='go'){tbOv('<span style="transform:translateY(-50%)">スタート！</span>');clearTimeout(tbGoT);tbGoT=setTimeout(()=>{const o=$('sov');if(o&&!o.classList.contains('end'))o.remove()},600)}
+    else if(e.k==='end'){TB.over=true;tbEndUI(e.w)}
+  }catch(_){}});
+}
+function tbEndUI(w){
+  const win=V(w)===0;(win?sfx.win:sfx.lose)();
+  const o=tbOv(`<div>${win?'あなたの勝ち！':'相手の勝ち…'}</div><div class="row"><button class="big" style="width:auto;font-size:18px;padding:10px 18px" id="tbagain">もう一回</button><button class="big" style="width:auto;font-size:18px;padding:10px 18px" id="tbquit">抜ける</button></div>`,true);
+  $('tbagain').onclick=()=>{if(TB.gone)return;const b=$('tbagain');if(TB.me===0){if(TB.over)tbStart()}else{b.disabled=true;b.textContent='相手を待ってるよ…';tbAct({t:'again'})}};
+  $('tbquit').onclick=()=>tbLeave(true);
+}
+function tbStart(){olClose();TB.on=true;TB.over=false;SV=false;tbUI();newGame()}
+// 通信中は、相手えらび・最初から・思い出（一時停止するから）をしまって、部屋の札を出すよ
+function tbUI(){
+  const on=TB.on||!!TB.room;
+  document.querySelectorAll('#spd .sbar > *').forEach(b=>{if(b.id!=='tbon')b.hidden=on});
+  ['sre','sgb'].forEach(id=>{const b=$(id);if(b)b.hidden=on});
+  const ob=$('tbon');if(ob)ob.hidden=on;
+  tbBar();
+}
+function tbBar(){
+  let b=$('tbbar');
+  if(!TB.room||!TB.on){if(b)b.remove();return}
+  if(!b){b=document.createElement('div');b.id='tbbar';document.querySelector('#spd .sbar').before(b)}
+  let ok=false;try{ok=TB.room.connected()}catch(e){}
+  b.innerHTML=`<span class="od ${ok&&!TB.gone?'ok':''}"></span><span>通信対戦・部屋 <b>${TB.code}</b>${TB.gone?'（相手が抜けたよ）':''}</span><button class="bkb" id="tbquit2">抜ける</button>`;
+  b.querySelector('#tbquit2').onclick=()=>tbLeave(true);
+}
+async function tbLeave(goOffline){
+  const r=TB.room,was=TB.on||!!r;
+  if(r&&TB.peer){try{r.emit('tb',{t:'bye',to:TB.peer}).catch(()=>{})}catch(e){}}
+  clearTimeout(TB.pt);clearTimeout(tbGoT);
+  Object.assign(TB,{on:false,room:null,peer:null,myPeer:null,code:'',ev:[],pt:0,pend:[],done:-1,gone:false,over:false,fr:[0,0]});
+  if(r)try{await r.leave()}catch(e){}
+  if(!was)return;
+  olClose();tbUI();{const b=$('tbbar');if(b)b.remove()}
+  if(goOffline){const o=$('sov');if(o)o.remove();newGame()}
+}
+function tbDissolve(){
+  if(!TB.room)return;
+  gid2++;tbLeave(false).then(()=>{
+    tone(523,0,.15,'square',.07);tone(392,.15,.3,'square',.07);
+    const o=olBox('<h3>部屋を解散したよ</h3><p>相手が部屋から抜けたよ。また遊ぶ時は、部屋を作り直してね</p><button class="ob1" id="oc">閉じる</button>');
+    o.querySelector('#oc').onclick=()=>{olClose();const s=$('sov');if(s)s.remove();newGame()};
+  });
+}
+async function tbJoin(code,host){
+  if(!OL.R){olBox('<h3>つないでるよ…</h3><p>ちょっと待ってね</p>');
+    try{OL.R=window.claude&&window.claude.use?await window.claude.use('room'):null}catch(e){OL.R=null}
+    if(!OL.R&&await pjLoad())OL.R=pjRooms(); // Claudeの外では、PeerJSでつなぐよ
+  }
+  const R=OL.R,back=()=>{olClose();newGame()};
+  if(!R){olBox('<h3>通信対戦</h3><p>通信の準備ができなかったよ。インターネットにつながってるか確かめて、もう一度試してね。</p><button class="ob1" id="oc">閉じる</button>').querySelector('#oc').onclick=back;return}
+  olBox('<h3>つないでるよ…</h3><p>ちょっと待ってね</p>');
+  let room;try{room=await R.join('tb-'+code,host)}catch(e){if(host&&e&&e.code==='taken')return tbJoin(String(1000+Math.floor(Math.random()*9000)),true); // 番号がほかの部屋とかぶったら、作り直すよ
+    olBox('<h3>うまくつながらなかったよ</h3><p>少し待ってから、もう一度試してね</p><p class="os">（'+String(e&&e.code||e).replace(/[<>&]/g,'')+'）</p><button class="ob1" id="oc">閉じる</button>').querySelector('#oc').onclick=back;return}
+  Object.assign(TB,{room,code,me:host?0:1,peer:null,on:false,gone:false,inV:-1,iid:0,pend:[],done:-1,ev:[],over:false,fr:[0,0]});
+  const meP=room.peers().find(p=>p.sameTab);TB.myPeer=meP?meP.peer:null;
+  room.presence({g:'tb',role:host?'host':'guest'}).catch(()=>{});
+  room.on('tb',tbRecv);
+  room.onPeers(ch=>{
+    const me=ch.peers.find(p=>p.sameTab);if(me)TB.myPeer=me.peer;
+    if(TB.peer&&ch.left.some(p=>p.peer===TB.peer)){TB.gone=true;tbBar();const pp=TB.peer;setTimeout(()=>{if(TB.room&&TB.gone&&TB.peer===pp)tbDissolve()},3000)}
+    if(TB.peer&&ch.joined.some(p=>p.peer===TB.peer)){TB.gone=false;tbBar()}
+    if(host&&!TB.peer){const o=ch.peers.find(p=>!p.sameTab&&p.presence&&p.presence.g==='tb'&&p.presence.role==='guest');if(o){TB.peer=o.peer;tbStart()}}
+  });
+  tbUI();tbWait();
+}
+function tbWait(){
+  if(TB.on)return;
+  const host=TB.me===0;
+  const o=olBox(host?`<h3>部屋を作ったよ！</h3><p>この番号を相手に教えてね</p><div class="ocode">${TB.code}</div><p class="os">相手が入ってくるのを待ってるよ…</p><button class="ob2" id="oc">やめる</button>`:`<h3>部屋 ${TB.code} に入ったよ</h3><p class="os">相手が部屋にいれば、すぐ始まるよ…<br>なかなか始まらない時は、番号を確かめてね</p><button class="ob2" id="oc">やめる</button>`);
+  o.querySelector('#oc').onclick=()=>tbLeave(true);
+}
+function tbMenu(){
+  gid2++;TQ=[];if(G){G.go=false;G.hold=[0,0]}{const s=$('sov');if(s)s.remove()}
+  const o=olBox(`<h3>通信対戦</h3><p>離れたところにいる友達と、トリックバトルで対戦できるよ</p>
+  <button class="ob1" id="omk">部屋を作る</button>
+  <div class="oin"><input id="ocd" inputmode="numeric" maxlength="4" placeholder="部屋番号（4けた）" autocomplete="off"><button class="ob1" id="ojn">入る</button></div>
+  <p class="os">部屋を作った人のスマホがゲームを進めるよ<br>2人とも、このページを開いている必要があるよ</p>
+  <button class="ob2" id="oc">閉じる</button>`);
+  o.querySelector('#oc').onclick=()=>{olClose();newGame()};
+  o.querySelector('#omk').onclick=()=>tbJoin(String(1000+Math.floor(Math.random()*9000)),true);
+  const go=()=>{const v=(o.querySelector('#ocd').value||'').replace(/\D/g,'');if(v.length!==4){o.querySelector('#ocd').focus();return}tbJoin(v,false)};
+  o.querySelector('#ojn').onclick=go;o.querySelector('#ocd').onkeydown=e=>{if(e.key==='Enter')go()};
+}
+{const b=document.createElement('button');b.className='md';b.id='tbon';b.textContent='🌐 通信対戦';b.onclick=tbMenu;document.querySelector('#spd .sbar').appendChild(b);
+ const st=document.createElement('style');st.textContent='#tbbar{width:min(96vw,420px);display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700}#tbbar span:nth-child(2){flex:1}#tbbar .od{width:10px;height:10px;border-radius:50%;background:#d62839;flex:none}#tbbar .od.ok{background:#7ee081;box-shadow:0 0 6px #7ee081}#tbbar .bkb{padding:3px 10px}';document.head.appendChild(st)}
+window.__tbLeave=()=>tbLeave(false);
+
 $('tart').innerHTML=FACE.map(a=>`<img alt="" src="${a}">`).join('');
 })();
 </script>
@@ -3068,7 +3247,7 @@ const tb=document.getElementById('pickRec');if(tb)tb.onclick=()=>openRec();
   ${wl(GFX.tr.fx)}${shut}`,
   tb:()=>{const W=window.TB_WFX;return `<h2 class="gname">トリックバトル</h2>
   <h3>目指すこと</h3><ul><li>早い者勝ちのトランプだよ！自分の<b>手札と山札をぜんぶ出しきった</b>ほうの勝ち！</li></ul>
-  <h3>はじめ</h3><ul><li>それぞれ26枚ずつ持って、<b>手札5枚</b>・<b>山札15枚</b>・<b>中央にめくる札6枚</b>に分けるよ。</li><li>「タップしてスタート」のあと、3・2・1で始まるよ。</li></ul>
+  <h3>はじめ</h3><ul><li>それぞれ26枚ずつ持って、<b>手札5枚</b>・<b>山札15枚</b>・<b>中央にめくる札6枚</b>に分けるよ。</li><li>「タップしてスタート」を押したら、すぐ始まるよ。</li><li>「🌐 通信対戦」で、離れた友達とも対戦できるよ。通信対戦は3・2・1で始まって、手札チェンジもできるよ。</li></ul>
   <h3>出し方</h3><ul><li>中央に2つの場があるよ。場の札と<b>数字が1つちがい</b>の札を出せるよ（7なら6か8）。<b>KとA</b>もつながってるよ。</li><li>出せる札をタップすると出せるよ。2つの場どっちにも出せる時は、札を選んでから場をタップしてね。</li><li>出したら、山札から手札に1枚補充されるよ。</li><li>順番はないよ！<b>相手と同時</b>に、早いもの勝ちで出していこう。</li><li>2人とも出せる札がなくなったら、中央に新しい札がめくられるよ。</li></ul>
   <h3>手札チェンジ</h3><ul><li>山札を<b>長押し</b>すると、手札を山札にもどして混ぜて、引き直せるよ。</li><li>使えるのは<b>2回まで</b>。山札の下の手紙が残りの回数だよ。</li></ul>
   <h3>相手</h3><ul><li><b>対戦</b>：1台を向かい合って2人で遊ぶよ。</li><li><b>ブロンズ・シルバー・ゴールド・魔女</b>：だんだん速くなるCPUだよ。</li></ul>
